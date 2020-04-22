@@ -5,8 +5,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import cn.jpush.android.data.JPushLocalNotification;
@@ -21,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,7 +33,7 @@ import cn.jpush.android.api.JPushInterface;
 import io.flutter.view.FlutterNativeView;
 
 /** JPushPlugin */
-public class JPushPlugin implements MethodCallHandler {
+public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentListener {
 
     /** Plugin registration. */
     public static void registerWith(Registrar registrar) {
@@ -43,6 +47,50 @@ public class JPushPlugin implements MethodCallHandler {
                 return false;
             }
         });
+
+        registrar.addNewIntentListener(instance);
+    }
+
+    private Map<String, Object> convertJsonStringToMap(String extras) {
+        if (extras == null) return null;
+        try {
+            return convertJsonObjectToMap(new JSONObject(extras));
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> convertJsonObjectToMap(JSONObject json) {
+        final Map<String, Object> map = new HashMap<>();
+        final Iterator<String> keys = json.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = json.opt(key);
+            if (value instanceof JSONObject) {
+                map.put(key, convertJsonObjectToMap((JSONObject) value));
+            } else if (value instanceof JSONArray) {
+                map.put(key, convertJsonArrayToList((JSONArray) value));
+            } else {
+                map.put(key, value);
+            }
+        }
+        return map;
+    }
+
+    private List<Object> convertJsonArrayToList(JSONArray json) {
+        int length = json.length();
+        List<Object> list = new ArrayList<>(length);
+        for (int i = 0; i < length; i++) {
+            Object value = json.opt(i);
+            if (value instanceof JSONObject) {
+                list.add(convertJsonObjectToMap((JSONObject) value));
+            } else if (value instanceof JSONArray) {
+                list.add(convertJsonArrayToList((JSONArray) value));
+            } else {
+                list.add(value);
+            }
+        }
+        return list;
     }
 
     private static String TAG = "| JPUSH | Flutter | Android | ";
@@ -59,8 +107,10 @@ public class JPushPlugin implements MethodCallHandler {
     public final Map<Integer, Result> callbackMap;
     private int sequence;
 
+    private Map<String, Object> launchAppNotification;
+
     private JPushPlugin(Registrar registrar, MethodChannel channel) {
-        
+
         this.registrar = registrar;
         this.channel = channel;
         this.callbackMap = new HashMap<>();
@@ -68,8 +118,16 @@ public class JPushPlugin implements MethodCallHandler {
         this.getRidCache = new ArrayList<>();
 
         instance = this;
+
+        handleIntent(registrar.context(), registrar.activity().getIntent(), true);
     }
 
+
+    @Override
+    public boolean onNewIntent(Intent intent) {
+        handleIntent(registrar.context(), intent, false);
+        return false;
+    }
 
     @Override
     public void onMethodCall(MethodCall call, Result result) {
@@ -142,7 +200,7 @@ public class JPushPlugin implements MethodCallHandler {
         JPushInterface.setDebugMode(debug);
 
         JPushInterface.init(registrar.context());     		// 初始化 JPush
-        
+
         String channel = (String)map.get("channel");
         JPushInterface.setChannel(registrar.context(), channel);
 
@@ -266,7 +324,7 @@ public class JPushPlugin implements MethodCallHandler {
     public void getLaunchAppNotification(MethodCall call, Result result) {
         Log.d(TAG,"");
 
-
+        result.success(launchAppNotification);
     }
 
     public void getRegistrationID(MethodCall call, Result result) {
@@ -317,6 +375,42 @@ public class JPushPlugin implements MethodCallHandler {
             int num = (int)numObject;
             JPushInterface.setBadgeNumber(registrar.context(),num);
             result.success(true);
+        }
+    }
+
+    private void handleIntent(Context context, Intent intent, boolean initial) {
+        if (intent == null) return;
+
+        //获取华为平台附带的jpush信息
+        String data = intent.getDataString();
+        //获取fcm、oppo平台附带的jpush信息
+        if (TextUtils.isEmpty(data) && intent.getExtras() != null) {
+            data = intent.getExtras().getString("JMessageExtra");
+        }
+        if (TextUtils.isEmpty(data)) return;
+
+        try {
+            JSONObject jsonObject = new JSONObject(data);
+            String msgId = jsonObject.optString("msg_id");
+            byte whichPushSDK = (byte) jsonObject.optInt("rom_type");
+            String title = jsonObject.optString("n_title");
+            String content = jsonObject.optString("n_content");
+            String extras = jsonObject.optString("n_extras");
+
+            Map<String, Object> extrasMap = convertJsonStringToMap(extras);
+            if (initial) {
+                if (extrasMap != null) {
+                    launchAppNotification = new HashMap<>();
+                    launchAppNotification.put("extras", extrasMap);
+                }
+            } else {
+                transmitNotificationOpen(title, content, extrasMap);
+            }
+
+            //上报点击事件
+            JPushInterface.reportNotificationOpened(context, msgId, whichPushSDK);
+        } catch (JSONException e) {
+            Log.w(TAG, "parse notification error");
         }
     }
 

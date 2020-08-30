@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import cn.jiguang.api.JCoreInterface;
 import cn.jpush.android.api.JPushInterface;
 import io.flutter.view.FlutterNativeView;
 
@@ -198,6 +199,7 @@ public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentL
         HashMap<String, Object> map = call.arguments();
         boolean debug = (boolean)map.get("debug");
         JPushInterface.setDebugMode(debug);
+        JCoreInterface.setWakeEnable(registrar.context(), (boolean) map.get("wakeEnable"));
 
         JPushInterface.init(registrar.context());     		// 初始化 JPush
 

@@ -30,6 +30,7 @@ class JPush {
     bool production,
     String channel = '',
     bool debug = false,
+    bool wakeEnable = false,
   }) {
     print(flutter_log + "setup:");
 
@@ -37,7 +38,8 @@ class JPush {
       'appKey': appKey,
       'channel': channel,
       'production': production,
-      'debug': debug
+      'debug': debug,
+      'wakeEnable': wakeEnable
     });
   }
 

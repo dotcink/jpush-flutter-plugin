@@ -96,7 +96,7 @@ public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentL
 
     private static String TAG = "| JPUSH | Flutter | Android | ";
     public static JPushPlugin instance;
-    static List<Map<String, Object>> openNotificationCache = new ArrayList<>();
+    static final List<Map<String, Object>> openNotificationCache = new ArrayList<>();
 
     private boolean dartIsReady = false;
     private boolean jpushDidinit = false;
@@ -217,9 +217,15 @@ public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentL
 
         if (dartIsReady) {
             // try to shedule notifcation cache
-            for (Map<String, Object> notification: JPushPlugin.openNotificationCache) {
+            List<Map<String, Object>> cache;
+            synchronized (JPushPlugin.openNotificationCache) {
+                cache = new ArrayList<>(JPushPlugin.openNotificationCache);
+            }
+            for (Map<String, Object> notification: cache) {
                 JPushPlugin.instance.channel.invokeMethod("onOpenNotification", notification);
-                JPushPlugin.openNotificationCache.remove(notification);
+                synchronized (JPushPlugin.openNotificationCache) {
+                    JPushPlugin.openNotificationCache.remove(notification);
+                }
             }
         }
         String rid = JPushInterface.getRegistrationID(registrar.context());
@@ -537,7 +543,9 @@ public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentL
         notification.put("title", title);
         notification.put("alert", alert);
         notification.put("extras", extras);
-        JPushPlugin.openNotificationCache.add(notification);
+        synchronized (JPushPlugin.openNotificationCache) {
+            JPushPlugin.openNotificationCache.add(notification);
+        }
 
         if (instance == null) {
             Log.d("JPushPlugin", "the instance is null");
@@ -547,7 +555,9 @@ public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentL
         if (instance.dartIsReady) {
             Log.d("JPushPlugin", "instance.dartIsReady is true");
             JPushPlugin.instance.channel.invokeMethod("onOpenNotification", notification);
-            JPushPlugin.openNotificationCache.remove(notification);
+            synchronized (JPushPlugin.openNotificationCache) {
+                JPushPlugin.openNotificationCache.remove(notification);
+            }
         }
 
     }

@@ -228,7 +228,11 @@ public class JPushPlugin implements MethodCallHandler, PluginRegistry.NewIntentL
                 }
             }
         }
-        String rid = JPushInterface.getRegistrationID(registrar.context());
+        String rid = null;
+        try {
+            rid = JPushInterface.getRegistrationID(registrar.context());
+        } catch (Exception ignore) {
+        }
         boolean ridAvailable = rid != null && !rid.isEmpty();
         if (ridAvailable && dartIsReady) {
             // try to schedule get rid cache
